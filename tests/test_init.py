@@ -123,6 +123,33 @@ async def test_catalog_shared_and_stored(
     assert len(stored["catalog"]) == 22
 
 
+async def test_temporary_catalog_number(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    mock_config_entry: MockConfigEntry,
+    mock_see_a_satellite: dict[str, AsyncMock],
+    satellites: list[Satellite],
+) -> None:
+    """A just-launched satellite's temporary 9-digit number is predicted."""
+    bluewalker = next(s for s in satellites if s.norad_id == 53807)
+    twin = Satellite.from_omm(
+        {**bluewalker.omm, "NORAD_CAT_ID": "799501674", "OBJECT_NAME": "Launch A"},
+        bluewalker.magnitude,
+        bluewalker.model,
+    )
+    satellites.insert(0, twin)
+    freezer.move_to(NOW)
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    assert mock_config_entry.state is ConfigEntryState.LOADED
+    state = hass.states.get("sensor.home_next_pass")
+    assert state.state == "2026-10-10T19:08:36+00:00"
+    assert state.attributes["satellite"] == "Launch A"
+    assert state.attributes["norad_id"] == 799501674
+    assert state.attributes["satellites"] == ["Launch A", "BlueWalker 3"]
+
+
 @pytest.mark.usefixtures("init_integration")
 async def test_cloud_cover_failure_is_tolerated(
     hass: HomeAssistant,

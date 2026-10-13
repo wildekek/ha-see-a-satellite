@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, override
 
@@ -45,6 +45,20 @@ type SeeASatelliteConfigEntry = ConfigEntry[SeeASatelliteCoordinator]
 
 DATA_CATALOG: HassKey[SatelliteCatalog] = HassKey(DOMAIN)
 STORAGE_VERSION = 1
+
+# The largest catalog number a TLE can hold ("Z9999" in Alpha-5).
+MAX_SGP4_SATNUM = 339999
+
+
+def _propagatable(satellite: Satellite) -> Satellite:
+    """Return the satellite with a catalog number SGP4 accepts.
+
+    CelesTrak gives freshly launched satellites temporary 9-digit numbers,
+    which sgp4 rejects although the number is only a label to SGP4.
+    """
+    if satellite.norad_id <= MAX_SGP4_SATNUM:
+        return satellite
+    return replace(satellite, omm={**satellite.omm, "NORAD_CAT_ID": "0"})
 
 
 class SatelliteCatalog:
@@ -203,7 +217,7 @@ class SeeASatelliteCoordinator(DataUpdateCoordinator[SatelliteData]):
 
     def _predict(self, satellites: list[Satellite]) -> list[TransitGroup]:
         transits = predict_transits(
-            satellites,
+            [_propagatable(s) for s in satellites],
             self.latitude,
             self.longitude,
             self.elevation,
